@@ -1,0 +1,981 @@
+<!DOCTYPE html>
+<html lang="vi" class="h-full dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Realtime Cross-Device OCR - Trích xuất văn bản đa thiết bị</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          animation: {
+            'pulse-glow': 'pulseGlow 2s infinite',
+            'fade-in': 'fadeIn 0.25s ease-out forwards',
+          },
+          keyframes: {
+            pulseGlow: {
+              '0%, 100%': { boxShadow: '0 0 15px rgba(59, 130, 246, 0.4)' },
+              '50%': { boxShadow: '0 0 25px rgba(59, 130, 246, 0.8)' },
+            },
+            fadeIn: {
+              '0%': { opacity: '0', transform: 'translateY(6px)' },
+              '100%': { opacity: '1', transform: 'translateY(0)' },
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* Custom Scrollbars */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    .dark ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    
+    .text-highlight {
+      animation: highlightEffect 2.5s ease-out;
+    }
+    @keyframes highlightEffect {
+      0% { background-color: rgba(59, 130, 246, 0.3); }
+      100% { background-color: transparent; }
+    }
+  </style>
+</head>
+<body class="h-full flex flex-col font-sans antialiased bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 transition-colors duration-200">
+
+  <!-- Application Header -->
+  <header class="border-b border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 backdrop-blur sticky top-0 z-40 px-4 py-3">
+    <div class="max-w-7xl mx-auto flex items-center justify-between gap-4">
+      
+      <!-- Logo & Title -->
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white shadow-lg shadow-blue-500/20">
+          <i class="fa-solid fa-bolt text-lg"></i>
+        </div>
+        <div>
+          <h1 class="font-bold text-base sm:text-lg leading-tight flex items-center gap-2">
+            Realtime OCR <span class="text-[10px] sm:text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">Unified AI</span>
+          </h1>
+          <p class="text-xs text-slate-500 dark:text-slate-400 hidden sm:block">Chụp ảnh trên điện thoại &bull; Đồng bộ văn bản thời gian thực</p>
+        </div>
+      </div>
+
+      <!-- Header Controls: Room Badge & Theme Switcher -->
+      <div class="flex items-center gap-2 sm:gap-3">
+        
+        <!-- Active Room Badge -->
+        <div id="roomBadge" class="hidden items-center gap-2 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700/80 rounded-xl px-3 py-1.5">
+          <div class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+          <span class="text-xs text-slate-500 dark:text-slate-400 hidden xs:inline">Phòng:</span>
+          <span id="currentRoomCode" class="font-mono font-bold text-blue-600 dark:text-blue-400 text-sm tracking-widest">------</span>
+          <button id="btnShareQR" title="Mở QR Code kết nối" class="ml-1 text-slate-400 hover:text-slate-700 dark:hover:text-white text-xs p-1">
+            <i class="fa-solid fa-qrcode"></i>
+          </button>
+        </div>
+
+        <!-- Mobile Quick View Scroll Buttons -->
+        <div class="flex lg:hidden bg-slate-200 dark:bg-slate-800 p-1 rounded-xl text-xs font-medium">
+          <button id="btnScrollToScan" class="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 shadow text-slate-800 dark:text-slate-100">
+            <i class="fa-solid fa-camera"></i> <span class="hidden sm:inline">Quét</span>
+          </button>
+          <button id="btnScrollToText" class="px-2.5 py-1 rounded-lg text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100">
+            <i class="fa-solid fa-file-lines"></i> <span class="hidden sm:inline">Văn bản</span>
+          </button>
+        </div>
+
+        <!-- Theme Toggle Button (Light/Dark Mode) -->
+        <button id="themeToggleBtn" title="Chuyển đổi Chế độ Sáng / Tối" class="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition flex items-center justify-center">
+          <i id="themeIcon" class="fa-solid fa-moon text-sm"></i>
+        </button>
+
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Unified Workspace Container -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 flex flex-col gap-6">
+
+    <!-- CONNECTION & ROOM SETUP PANEL -->
+    <section id="connectionPanel" class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-lg relative overflow-hidden transition-colors">
+      <div class="grid md:grid-cols-12 gap-6 items-center">
+        
+        <!-- Info & Instructions -->
+        <div class="md:col-span-7 space-y-2">
+          <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 text-xs font-semibold border border-blue-500/20">
+            <i class="fa-solid fa-cloud-arrow-up"></i> Đồng bộ thời gian thực xuyên thiết bị
+          </div>
+          <h2 class="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Không gian làm việc Trích xuất OCR Hợp nhất</h2>
+          <p class="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+            Chụp và nhận văn bản trực tiếp trên cùng 1 thiết bị hoặc kết nối ĐT với Máy tính qua mã PIN 6 số / Mã QR (Không cần chung Wi-Fi).
+          </p>
+        </div>
+
+        <!-- Create or Join Room Form -->
+        <div class="md:col-span-5 bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 flex flex-col gap-3">
+          <div class="flex items-center justify-between pb-1.5 border-b border-slate-200 dark:border-slate-800">
+            <span class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Phòng làm việc (Session)</span>
+            <span id="authStatusText" class="text-xs text-amber-500 dark:text-amber-400 flex items-center gap-1">
+              <i class="fa-solid fa-spinner animate-spin"></i> Kết nối Firebase...
+            </span>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <!-- Create Room Button -->
+            <button id="btnCreateRoom" disabled class="py-2.5 px-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 font-semibold rounded-xl text-white text-xs shadow-md shadow-blue-600/20 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+              <i class="fa-solid fa-plus-circle"></i> Tạo phòng mới
+            </button>
+
+            <!-- Quick Copy Link Button (If connected) -->
+            <button id="btnCopyRoomLink" class="py-2.5 px-3 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 font-semibold rounded-xl text-slate-700 dark:text-slate-200 text-xs border border-slate-300 dark:border-slate-700 transition flex items-center justify-center gap-1.5">
+              <i class="fa-solid fa-link"></i> Sao chép Link phòng
+            </button>
+          </div>
+
+          <!-- Join Room Input -->
+          <div class="flex gap-2 pt-1">
+            <input type="text" id="inputJoinCode" maxlength="6" placeholder="Nhập mã 6 số (VD: 839102)" class="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl px-3 py-2 text-center font-mono text-base font-bold tracking-widest uppercase focus:outline-none focus:border-blue-500 text-slate-900 dark:text-white flex-1 placeholder:text-slate-400 placeholder:normal-case placeholder:tracking-normal placeholder:text-xs">
+            <button id="btnJoinRoom" disabled class="px-4 py-2 bg-slate-800 dark:bg-slate-700 hover:bg-slate-700 text-white font-semibold rounded-xl text-xs transition disabled:opacity-50 flex items-center justify-center">
+              Vào phòng
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- UNIFIED SIDE-BY-SIDE / STACKED WORKSPACE -->
+    <div class="grid lg:grid-cols-12 gap-6 items-start">
+      
+      <!-- LEFT COLUMN: SCANNER CONTROLS & PHOTO HISTORY -->
+      <div id="sectionScan" class="lg:col-span-5 flex flex-col gap-6">
+        
+        <!-- Camera & File Input Actions Box -->
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-lg flex flex-col gap-4">
+          
+          <div class="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+            <h3 class="font-bold text-sm text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <i class="fa-solid fa-camera text-blue-500"></i> Quét & Tải ảnh
+            </h3>
+            <span id="aiStatusBadge" class="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-slate-400"></span> Chờ ảnh...
+            </span>
+          </div>
+
+          <!-- Hidden File Inputs -->
+          <input type="file" id="cameraFileInput" accept="image/*" capture="environment" class="hidden">
+          <input type="file" id="galleryFileInput" accept="image/*" multiple class="hidden">
+
+          <!-- Action Buttons Grid -->
+          <div class="grid grid-cols-1 gap-3">
+            
+            <!-- Quick Camera Capture Button -->
+            <button id="btnTriggerCamera" class="w-full py-3.5 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 rounded-xl font-bold text-white text-sm shadow-md shadow-blue-600/20 flex items-center justify-center gap-2.5 transition active:scale-[0.99]">
+              <i class="fa-solid fa-camera text-lg"></i> Chụp ảnh bằng Camera ĐT
+            </button>
+
+            <div class="grid grid-cols-2 gap-2">
+              <!-- Live Camera Stream Launcher -->
+              <button id="btnTriggerLiveCam" class="py-3 px-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-xl font-semibold text-slate-700 dark:text-slate-200 text-xs flex items-center justify-center gap-2 transition">
+                <i class="fa-solid fa-video text-blue-500"></i> Quét Camera Trực Tiếp
+              </button>
+
+              <!-- Gallery Multiple Selection -->
+              <button id="btnTriggerGallery" class="py-3 px-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-xl font-semibold text-slate-700 dark:text-slate-200 text-xs flex items-center justify-center gap-2 transition">
+                <i class="fa-regular fa-images text-indigo-500"></i> Chọn nhiều ảnh
+              </button>
+            </div>
+          </div>
+
+          <!-- Loading Indicator -->
+          <div id="loadingIndicator" class="hidden p-3.5 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/50 rounded-xl items-center gap-3">
+            <i class="fa-solid fa-spinner animate-spin text-blue-600 dark:text-blue-400 text-lg"></i>
+            <div class="text-xs">
+              <span class="font-semibold text-blue-900 dark:text-blue-200 block">Gemini AI đang trích xuất chữ...</span>
+              <span class="text-blue-700 dark:text-blue-400">Đang đọc chữ viết tay & chữ in</span>
+            </div>
+          </div>
+
+          <!-- Last Scan Result Preview -->
+          <div id="lastScanPreviewBox" class="hidden bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-3 flex items-center gap-3">
+            <img id="lastScanThumb" src="" class="w-12 h-12 object-cover rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-200 dark:bg-slate-900" alt="Thumb">
+            <div class="flex-1 min-w-0">
+              <span class="text-xs font-semibold text-emerald-600 dark:text-emerald-400 block flex items-center gap-1">
+                <i class="fa-solid fa-circle-check"></i> Đã đồng bộ chữ thành công!
+              </span>
+              <p id="lastScanSnippet" class="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5 font-mono italic"></p>
+            </div>
+          </div>
+        </div>
+
+        <!-- History of Extracted Images -->
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-lg flex flex-col min-h-[300px]">
+          <div class="flex items-center justify-between mb-3 pb-2 border-b border-slate-200 dark:border-slate-800">
+            <h3 class="font-bold text-sm text-slate-900 dark:text-slate-200 flex items-center gap-2">
+              <i class="fa-solid fa-clock-rotate-left text-blue-500"></i> Lịch sử ảnh đã quét (<span id="historyCount">0</span>)
+            </h3>
+            <button id="btnClearHistory" class="text-xs text-slate-400 hover:text-red-500 transition" title="Xóa tất cả lịch sử ảnh">
+              <i class="fa-solid fa-trash-can"></i> Xóa lịch sử
+            </button>
+          </div>
+
+          <!-- Images List Scrollable -->
+          <div id="historyList" class="flex-1 overflow-y-auto space-y-3 pr-1 max-h-[380px]">
+            <div id="emptyHistoryState" class="h-40 flex flex-col items-center justify-center text-center p-4 text-slate-400 dark:text-slate-500">
+              <i class="fa-regular fa-image text-3xl mb-2 opacity-40"></i>
+              <p class="text-xs">Chưa có ảnh nào được gửi.</p>
+              <p class="text-[11px] opacity-75 mt-0.5">Ảnh chụp/tải lên sẽ xuất hiện danh sách tại đây.</p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- RIGHT COLUMN: LIVE MERGED TEXT EDITOR -->
+      <div id="sectionText" class="lg:col-span-7 flex flex-col gap-6">
+        <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col min-h-[550px]">
+          
+          <!-- Editor Header & Toolbar -->
+          <div class="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-200 dark:border-slate-800">
+            <div>
+              <h2 class="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2 text-base">
+                <i class="fa-solid fa-file-lines text-blue-500"></i> Văn bản tổng hợp nối tiếp
+              </h2>
+              <p class="text-xs text-slate-500 dark:text-slate-400">Nội dung trích xuất sẽ tự động nối tiếp vào cuối văn bản</p>
+            </div>
+
+            <!-- Action Toolbar Buttons -->
+            <div class="flex items-center gap-2">
+              <button id="btnCopyAll" title="Sao chép toàn bộ văn bản" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold shadow transition flex items-center gap-1.5">
+                <i class="fa-regular fa-copy"></i> Sao chép
+              </button>
+              <button id="btnDownloadTxt" title="Tải xuống file văn bản .txt" class="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-medium transition flex items-center gap-1.5">
+                <i class="fa-solid fa-download"></i> Tải .TXT
+              </button>
+              <button id="btnClearText" title="Xóa sạch khung soạn thảo" class="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-red-50 dark:hover:bg-red-950/50 text-slate-500 hover:text-red-600 dark:text-slate-400 dark:hover:text-red-400 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-medium transition flex items-center gap-1.5">
+                <i class="fa-solid fa-eraser"></i> Xóa hết
+              </button>
+            </div>
+          </div>
+
+          <!-- Realtime Text Area -->
+          <div class="relative flex-1 mt-4 flex flex-col">
+            <textarea id="mainTextEditor" placeholder="Nội dung chữ trích xuất từ ảnh (chữ viết tay & chữ đánh máy) sẽ tự động xuất hiện và nối tiếp liên tục tại đây..." class="w-full flex-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-4 font-sans text-sm text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:outline-none focus:border-blue-500/80 leading-relaxed resize-none min-h-[420px] transition-colors"></textarea>
+            
+            <!-- Editor Status Footer -->
+            <div class="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mt-2 px-1">
+              <div class="flex items-center gap-3">
+                <span>Số từ: <strong id="wordCount" class="text-slate-700 dark:text-slate-300">0</strong></span>
+                <span>Ký tự: <strong id="charCount" class="text-slate-700 dark:text-slate-300">0</strong></span>
+              </div>
+              <div id="syncIndicator" class="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 text-xs font-medium">
+                <i class="fa-solid fa-arrows-rotate"></i> Đồng bộ đám mây thời gian thực
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- LIVE WEBRTC CAMERA MODAL -->
+  <div id="liveCamModal" class="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-50 hidden flex-col">
+    <div class="p-4 flex items-center justify-between border-b border-slate-800">
+      <span class="font-semibold text-sm text-white flex items-center gap-2">
+        <i class="fa-solid fa-camera text-blue-400"></i> Quét trực tiếp bằng Camera
+      </span>
+      <button id="btnCloseLiveCam" class="text-slate-400 hover:text-white text-lg p-2">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+    <div class="flex-1 relative flex items-center justify-center bg-black overflow-hidden">
+      <video id="webcamVideo" autoplay playsinline class="w-full h-full object-cover max-h-screen"></video>
+      <canvas id="snapshotCanvas" class="hidden"></canvas>
+      
+      <!-- Overlay Framing Guide -->
+      <div class="absolute inset-8 border-2 border-dashed border-blue-400/50 rounded-2xl pointer-events-none flex items-center justify-center">
+        <span class="bg-black/60 px-3 py-1 rounded-full text-xs text-blue-300 backdrop-blur">Đặt chữ viết tay / bản in vào khung</span>
+      </div>
+    </div>
+    <div class="p-6 bg-slate-900 border-t border-slate-800 flex justify-center">
+      <button id="btnCaptureSnapshot" class="w-16 h-16 rounded-full bg-white border-4 border-blue-500 shadow-2xl flex items-center justify-center text-blue-600 hover:scale-105 transition active:scale-95">
+        <i class="fa-solid fa-camera text-2xl"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- QR CODE MODAL -->
+  <div id="qrModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+    <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 max-w-sm w-full text-center flex flex-col items-center gap-4 shadow-2xl animate-fade-in">
+      <div class="flex justify-between items-center w-full pb-2 border-b border-slate-200 dark:border-slate-800">
+        <h3 class="font-bold text-sm text-slate-900 dark:text-white">Mã QR Kết Nối Nhanh</h3>
+        <button id="btnCloseQRModal" class="text-slate-400 hover:text-slate-700 dark:hover:text-white">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      
+      <div class="bg-white p-3 rounded-xl shadow-md border border-slate-200">
+        <img id="qrCodeImg" src="" alt="QR Code" class="w-48 h-48 mx-auto">
+      </div>
+      <p class="text-xs text-slate-500 dark:text-slate-400">Dùng điện thoại quét mã QR này để tự động gia nhập phòng và đồng bộ chữ!</p>
+      
+      <div class="bg-slate-100 dark:bg-slate-950 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 w-full text-xs font-mono text-blue-600 dark:text-blue-400 break-all" id="shareUrlDisplay"></div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 max-w-xs"></div>
+
+  <!-- FIREBASE & GEMINI LOGIC SCRIPT -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    // Global App Configuration
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'realtime-ocr-app';
+    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+      apiKey: "dummy-key",
+      authDomain: "dummy.firebaseapp.com",
+      projectId: "dummy-project",
+      storageBucket: "dummy.appspot.com",
+      messagingSenderId: "12345678",
+      appId: "1:12345678:web:dummy"
+    };
+
+    // Firebase Initialization
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
+
+    // Application State
+    let currentUser = null;
+    let currentRoomId = null;
+    let roomSnapshotUnsub = null;
+    let mediaStream = null;
+
+    // THEME TOGGLE SYSTEM (Light / Dark mode)
+    const themeToggleBtn = document.getElementById('themeToggleBtn');
+    const themeIcon = document.getElementById('themeIcon');
+    const htmlEl = document.documentElement;
+
+    function applyTheme(isDark) {
+      if (isDark) {
+        htmlEl.classList.add('dark');
+        themeIcon.className = 'fa-solid fa-sun text-amber-400 text-sm';
+        localStorage.setItem('ocr_theme', 'dark');
+      } else {
+        htmlEl.classList.remove('dark');
+        themeIcon.className = 'fa-solid fa-moon text-slate-600 text-sm';
+        localStorage.setItem('ocr_theme', 'light');
+      }
+    }
+
+    // Load saved theme or system preference
+    const savedTheme = localStorage.getItem('ocr_theme');
+    if (savedTheme) {
+      applyTheme(savedTheme === 'dark');
+    } else {
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      applyTheme(prefersDark);
+    }
+
+    themeToggleBtn.addEventListener('click', () => {
+      const isCurrentlyDark = htmlEl.classList.contains('dark');
+      applyTheme(!isCurrentlyDark);
+    });
+
+    // DOM Elements Reference
+    const authStatusText = document.getElementById('authStatusText');
+    const btnCreateRoom = document.getElementById('btnCreateRoom');
+    const btnJoinRoom = document.getElementById('btnJoinRoom');
+    const inputJoinCode = document.getElementById('inputJoinCode');
+    const roomBadge = document.getElementById('roomBadge');
+    const currentRoomCode = document.getElementById('currentRoomCode');
+    const btnCopyRoomLink = document.getElementById('btnCopyRoomLink');
+
+    const mainTextEditor = document.getElementById('mainTextEditor');
+    const wordCount = document.getElementById('wordCount');
+    const charCount = document.getElementById('charCount');
+    const historyList = document.getElementById('historyList');
+    const emptyHistoryState = document.getElementById('emptyHistoryState');
+    const historyCount = document.getElementById('historyCount');
+
+    const btnCopyAll = document.getElementById('btnCopyAll');
+    const btnDownloadTxt = document.getElementById('btnDownloadTxt');
+    const btnClearText = document.getElementById('btnClearText');
+    const btnClearHistory = document.getElementById('btnClearHistory');
+    const btnShareQR = document.getElementById('btnShareQR');
+
+    // Scanner & Camera Elements
+    const cameraFileInput = document.getElementById('cameraFileInput');
+    const galleryFileInput = document.getElementById('galleryFileInput');
+    const btnTriggerCamera = document.getElementById('btnTriggerCamera');
+    const btnTriggerGallery = document.getElementById('btnTriggerGallery');
+    const btnTriggerLiveCam = document.getElementById('btnTriggerLiveCam');
+    const loadingIndicator = document.getElementById('loadingIndicator');
+    const aiStatusBadge = document.getElementById('aiStatusBadge');
+    const lastScanPreviewBox = document.getElementById('lastScanPreviewBox');
+    const lastScanThumb = document.getElementById('lastScanThumb');
+    const lastScanSnippet = document.getElementById('lastScanSnippet');
+
+    // Mobile scroll buttons
+    const btnScrollToScan = document.getElementById('btnScrollToScan');
+    const btnScrollToText = document.getElementById('btnScrollToText');
+    const sectionScan = document.getElementById('sectionScan');
+    const sectionText = document.getElementById('sectionText');
+
+    btnScrollToScan.addEventListener('click', () => {
+      sectionScan.scrollIntoView({ behavior: 'smooth' });
+      btnScrollToScan.className = "px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 shadow text-slate-800 dark:text-slate-100 font-semibold";
+      btnScrollToText.className = "px-2.5 py-1 rounded-lg text-slate-600 dark:text-slate-400";
+    });
+    btnScrollToText.addEventListener('click', () => {
+      sectionText.scrollIntoView({ behavior: 'smooth' });
+      btnScrollToText.className = "px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 shadow text-slate-800 dark:text-slate-100 font-semibold";
+      btnScrollToScan.className = "px-2.5 py-1 rounded-lg text-slate-600 dark:text-slate-400";
+    });
+
+    // Modals
+    const qrModal = document.getElementById('qrModal');
+    const btnCloseQRModal = document.getElementById('btnCloseQRModal');
+    const qrCodeImg = document.getElementById('qrCodeImg');
+    const shareUrlDisplay = document.getElementById('shareUrlDisplay');
+
+    const liveCamModal = document.getElementById('liveCamModal');
+    const btnCloseLiveCam = document.getElementById('btnCloseLiveCam');
+    const webcamVideo = document.getElementById('webcamVideo');
+    const snapshotCanvas = document.getElementById('snapshotCanvas');
+    const btnCaptureSnapshot = document.getElementById('btnCaptureSnapshot');
+
+    // Toast Utility
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      const bgColors = {
+        success: 'bg-emerald-600 text-white',
+        error: 'bg-red-600 text-white',
+        info: 'bg-blue-600 text-white',
+      };
+      toast.className = `p-3 rounded-xl shadow-xl font-sans text-xs flex items-center gap-2 ${bgColors[type] || bgColors.info} animate-fade-in`;
+      toast.innerHTML = `<i class="fa-solid fa-circle-info"></i> <span>${message}</span>`;
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.3s';
+        setTimeout(() => toast.remove(), 300);
+      }, 3000);
+    }
+
+    // Auth Initialization
+    async function initAuth() {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (err) {
+        console.error("Auth Error:", err);
+      }
+    }
+
+    onAuthStateChanged(auth, (user) => {
+      currentUser = user;
+      if (user) {
+        authStatusText.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-500"></i> Đã kết nối Firebase`;
+        btnCreateRoom.disabled = false;
+        btnJoinRoom.disabled = false;
+
+        // Auto join if URL query has ?room=
+        const urlParams = new URLSearchParams(window.location.search);
+        const roomCodeFromUrl = urlParams.get('room');
+        if (roomCodeFromUrl && roomCodeFromUrl.length === 6) {
+          joinRoom(roomCodeFromUrl.toUpperCase());
+        }
+      }
+    });
+
+    // ROOM MANAGEMENT
+    function generateRoomCode() {
+      return Math.floor(100000 + Math.random() * 900000).toString();
+    }
+
+    function getRoomDocRef(roomId) {
+      return doc(db, 'artifacts', appId, 'public', 'data', 'ocr_rooms', roomId);
+    }
+
+    async function createRoom() {
+      if (!currentUser) return;
+      const code = generateRoomCode();
+      const roomRef = getRoomDocRef(code);
+      const initialData = {
+        roomId: code,
+        combinedText: "",
+        items: [],
+        createdAt: Date.now(),
+        lastUpdated: Date.now()
+      };
+
+      try {
+        await setDoc(roomRef, initialData);
+        joinRoom(code);
+        showToast(`Đã tạo phòng thành công: ${code}`, 'success');
+      } catch (err) {
+        console.error("Create room error:", err);
+        showToast("Không thể tạo phòng. Vui lòng thử lại.", 'error');
+      }
+    }
+
+    function joinRoom(code) {
+      if (!currentUser) return;
+      if (roomSnapshotUnsub) roomSnapshotUnsub();
+
+      currentRoomId = code;
+      currentRoomCode.textContent = code;
+      roomBadge.classList.remove('hidden');
+      roomBadge.classList.add('flex');
+
+      // Subscribe to real-time updates for the room
+      const roomRef = getRoomDocRef(code);
+      let isFirstSync = true;
+      let previousTextLength = 0;
+
+      roomSnapshotUnsub = onSnapshot(roomRef, (snapshot) => {
+        if (!snapshot.exists()) {
+          showToast(`Phòng ${code} không tồn tại!`, 'error');
+          return;
+        }
+
+        const data = snapshot.data();
+        const newText = data.combinedText || "";
+        const items = data.items || [];
+
+        // Update editor text
+        if (mainTextEditor.value !== newText) {
+          mainTextEditor.value = newText;
+          updateCounts();
+
+          // Highlight new text if appended
+          if (!isFirstSync && newText.length > previousTextLength) {
+            mainTextEditor.classList.add('text-highlight');
+            setTimeout(() => mainTextEditor.classList.remove('text-highlight'), 2500);
+          }
+        }
+
+        previousTextLength = newText.length;
+        isFirstSync = false;
+
+        // Render History Items
+        renderHistoryItems(items);
+
+      }, (error) => {
+        console.error("Room sync error:", error);
+      });
+    }
+
+    btnCreateRoom.addEventListener('click', createRoom);
+    btnJoinRoom.addEventListener('click', () => {
+      const code = inputJoinCode.value.trim().toUpperCase();
+      if (code.length === 6) {
+        joinRoom(code);
+      } else {
+        showToast("Mã phòng phải gồm 6 chữ số", 'error');
+      }
+    });
+
+    // REAL-TIME SYNC TEXT & HISTORY UPDATE
+    async function appendTextToRoom(extractedText, imageBase64Thumb) {
+      if (!currentRoomId || !currentUser) {
+        showToast("Chưa kết nối vào phòng nào!", 'error');
+        return;
+      }
+
+      const roomRef = getRoomDocRef(currentRoomId);
+      try {
+        const roomSnap = await getDoc(roomRef);
+        let existingText = "";
+        let existingItems = [];
+
+        if (roomSnap.exists()) {
+          existingText = roomSnap.data().combinedText || "";
+          existingItems = roomSnap.data().items || [];
+        }
+
+        const separator = existingText.length > 0 ? "\n\n---\n\n" : "";
+        const updatedText = existingText + separator + extractedText;
+
+        const newItem = {
+          id: 'item_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+          thumb: imageBase64Thumb || "",
+          text: extractedText,
+          timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+        };
+
+        const updatedItems = [newItem, ...existingItems].slice(0, 30);
+
+        await updateDoc(roomRef, {
+          combinedText: updatedText,
+          items: updatedItems,
+          lastUpdated: Date.now()
+        });
+
+        showToast("Đã nối văn bản trích xuất thành công!", "success");
+
+        if (lastScanPreviewBox) {
+          lastScanPreviewBox.classList.remove('hidden');
+          if (imageBase64Thumb) lastScanThumb.src = imageBase64Thumb;
+          lastScanSnippet.textContent = extractedText.replace(/\n/g, ' ').substring(0, 80) + '...';
+        }
+
+      } catch (err) {
+        console.error("Sync error:", err);
+        showToast("Lỗi đồng bộ dữ liệu phòng", "error");
+      }
+    }
+
+    // Render History Items Sidebar
+    function renderHistoryItems(items) {
+      historyCount.textContent = items.length;
+
+      if (items.length === 0) {
+        emptyHistoryState.classList.remove('hidden');
+        historyList.innerHTML = '';
+        historyList.appendChild(emptyHistoryState);
+        return;
+      }
+
+      emptyHistoryState.classList.add('hidden');
+      historyList.innerHTML = '';
+
+      items.forEach(item => {
+        const itemEl = document.createElement('div');
+        itemEl.className = "bg-slate-50 dark:bg-slate-950 p-3 rounded-xl border border-slate-200 dark:border-slate-800 flex gap-3 items-start animate-fade-in hover:border-slate-300 dark:hover:border-slate-700 transition";
+        itemEl.innerHTML = `
+          ${item.thumb ? `<img src="${item.thumb}" class="w-12 h-12 rounded-lg object-cover bg-slate-200 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex-shrink-0" alt="Thumb">` : `<div class="w-12 h-12 rounded-lg bg-slate-200 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-center text-slate-500 flex-shrink-0"><i class="fa-solid fa-file-text"></i></div>`}
+          <div class="flex-1 min-w-0">
+            <div class="flex justify-between items-center text-[11px] text-slate-500 dark:text-slate-400 mb-1">
+              <span>${item.timestamp || 'Mới đây'}</span>
+              <button class="btnCopySnippet hover:text-blue-500 p-0.5" title="Copy riêng đoạn này">
+                <i class="fa-regular fa-copy"></i>
+              </button>
+            </div>
+            <p class="text-xs text-slate-700 dark:text-slate-300 line-clamp-3 font-sans leading-relaxed">${item.text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>
+          </div>
+        `;
+
+        itemEl.querySelector('.btnCopySnippet').addEventListener('click', () => {
+          copyToClipboard(item.text);
+          showToast("Đã sao chép đoạn văn bản này", "info");
+        });
+
+        historyList.appendChild(itemEl);
+      });
+    }
+
+    // EDITOR CONTROLS & UTILITIES
+    function updateCounts() {
+      const text = mainTextEditor.value;
+      charCount.textContent = text.length;
+      wordCount.textContent = text.trim() ? text.trim().split(/\s+/).length : 0;
+    }
+
+    mainTextEditor.addEventListener('input', () => {
+      updateCounts();
+      if (currentRoomId && currentUser) {
+        const roomRef = getRoomDocRef(currentRoomId);
+        updateDoc(roomRef, {
+          combinedText: mainTextEditor.value,
+          lastUpdated: Date.now()
+        }).catch(err => console.error("Text save error:", err));
+      }
+    });
+
+    function copyToClipboard(text) {
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text);
+      } else {
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+      }
+    }
+
+    btnCopyAll.addEventListener('click', () => {
+      if (!mainTextEditor.value.trim()) return;
+      copyToClipboard(mainTextEditor.value);
+      showToast("Đã sao chép toàn bộ văn bản!", "success");
+    });
+
+    btnDownloadTxt.addEventListener('click', () => {
+      const text = mainTextEditor.value;
+      if (!text.trim()) return;
+      const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `OCR_Export_${currentRoomId || 'Document'}_${Date.now()}.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    btnClearText.addEventListener('click', async () => {
+      if (!mainTextEditor.value.trim()) return;
+      mainTextEditor.value = "";
+      updateCounts();
+      if (currentRoomId && currentUser) {
+        const roomRef = getRoomDocRef(currentRoomId);
+        await updateDoc(roomRef, { combinedText: "", lastUpdated: Date.now() });
+      }
+      showToast("Đã xóa sạch khung soạn thảo", "info");
+    });
+
+    btnClearHistory.addEventListener('click', async () => {
+      if (!currentRoomId || !currentUser) return;
+      const roomRef = getRoomDocRef(currentRoomId);
+      await updateDoc(roomRef, { items: [] });
+      showToast("Đã xóa lịch sử ảnh quét", "info");
+    });
+
+    // SHARE LINK & QR CODE GENERATION
+    function openQRModal() {
+      if (!currentRoomId) {
+        showToast("Vui lòng tạo hoặc vào phòng trước!", "error");
+        return;
+      }
+      const fullUrl = `${window.location.origin}${window.location.pathname}?room=${currentRoomId}`;
+      const qrApiUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(fullUrl)}`;
+      qrCodeImg.src = qrApiUrl;
+      shareUrlDisplay.textContent = fullUrl;
+      qrModal.classList.remove('hidden');
+      qrModal.classList.add('flex');
+    }
+
+    btnShareQR.addEventListener('click', openQRModal);
+    btnCloseQRModal.addEventListener('click', () => {
+      qrModal.classList.add('hidden');
+      qrModal.classList.remove('flex');
+    });
+
+    btnCopyRoomLink.addEventListener('click', () => {
+      if (!currentRoomId) {
+        showToast("Vui lòng tạo hoặc vào phòng trước!", "error");
+        return;
+      }
+      const fullUrl = `${window.location.origin}${window.location.pathname}?room=${currentRoomId}`;
+      copyToClipboard(fullUrl);
+      showToast("Đã sao chép liên kết phòng!", "success");
+    });
+
+    // GEMINI AI OCR INTEGRATION
+    async function processImageWithGemini(base64Data, mimeType) {
+      const apiKey = "";
+      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+
+      const systemPrompt = `Hãy trích xuất chính xác 100% tất cả văn bản trong hình ảnh này. Nhận diện cả chữ in/đánh máy và chữ viết tay (đặc biệt là tiếng Việt có dấu và tiếng Anh). Giữ nguyên định dạng xuống dòng, đoạn văn, danh sách gạch đầu dòng tự nhiên nếu có. CHỈ TRẢ VỀ NỘI DUNG VĂN BẢN ĐÃ TRÍCH XUẤT, KHÔNG THÊM BẤT KỲ LỜI NÓI ĐẦU, BÌNH LUẬN HAY GIẢI THÍCH NÀO KHÁC.`;
+
+      const payload = {
+        contents: [
+          {
+            role: "user",
+            parts: [
+              { text: systemPrompt },
+              {
+                inlineData: {
+                  mimeType: mimeType || "image/jpeg",
+                  data: base64Data
+                }
+              }
+            ]
+          }
+        ]
+      };
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        throw new Error(`Gemini API error status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      const extractedText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!extractedText) {
+        throw new Error("Không tìm thấy chữ trong hình ảnh.");
+      }
+
+      return extractedText.trim();
+    }
+
+    // Helper: Convert File to Base64 & Thumbnail Canvas
+    function fileToBase64AndThumb(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = (event) => {
+          const img = new Image();
+          img.src = event.target.result;
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const maxDim = 200;
+            let width = img.width;
+            let height = img.height;
+            if (width > height) {
+              if (width > maxDim) {
+                height *= maxDim / width;
+                width = maxDim;
+              }
+            } else {
+              if (height > maxDim) {
+                width *= maxDim / height;
+                height = maxDim;
+              }
+            }
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            const thumbBase64 = canvas.toDataURL('image/jpeg', 0.6);
+            const base64Data = event.target.result.split(',')[1];
+            resolve({
+              base64Data,
+              mimeType: file.type || "image/jpeg",
+              thumbBase64
+            });
+          };
+          img.onerror = reject;
+        };
+        reader.onerror = reject;
+      });
+    }
+
+    // Process selected files
+    async function handleFilesSelected(files) {
+      if (!currentRoomId) {
+        showToast("Vui lòng gia nhập/tạo phòng trước khi quét ảnh!", "error");
+        return;
+      }
+      if (!files || files.length === 0) return;
+
+      loadingIndicator.classList.remove('hidden');
+      loadingIndicator.classList.add('flex');
+      aiStatusBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span> Đang xử lý AI...`;
+
+      let processedCount = 0;
+      for (let i = 0; i < files.length; i++) {
+        try {
+          const file = files[i];
+          const { base64Data, mimeType, thumbBase64 } = await fileToBase64AndThumb(file);
+          const extractedText = await processImageWithGemini(base64Data, mimeType);
+          await appendTextToRoom(extractedText, thumbBase64);
+          processedCount++;
+        } catch (err) {
+          console.error(`Error processing file ${i}:`, err);
+          showToast(`Lỗi xử lý ảnh thứ ${i + 1}: ${err.message}`, "error");
+        }
+      }
+
+      loadingIndicator.classList.add('hidden');
+      loadingIndicator.classList.remove('flex');
+      aiStatusBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-500"></span> Hoàn tất (${processedCount}/${files.length} ảnh)`;
+    }
+
+    // Camera & Gallery File Triggers
+    btnTriggerCamera.addEventListener('click', () => cameraFileInput.click());
+    btnTriggerGallery.addEventListener('click', () => galleryFileInput.click());
+
+    cameraFileInput.addEventListener('change', (e) => handleFilesSelected(e.target.files));
+    galleryFileInput.addEventListener('change', (e) => handleFilesSelected(e.target.files));
+
+    // WEBRTC LIVE CAMERA STREAM
+    btnTriggerLiveCam.addEventListener('click', async () => {
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: "environment" } },
+          audio: false
+        });
+        webcamVideo.srcObject = mediaStream;
+        liveCamModal.classList.remove('hidden');
+        liveCamModal.classList.add('flex');
+      } catch (err) {
+        console.error("Camera access error:", err);
+        showToast("Không thể mở Camera thiết bị. Vui lòng kiểm tra quyền truy cập.", "error");
+      }
+    });
+
+    function stopLiveCam() {
+      if (mediaStream) {
+        mediaStream.getTracks().forEach(track => track.stop());
+        mediaStream = null;
+      }
+      liveCamModal.classList.add('hidden');
+      liveCamModal.classList.remove('flex');
+    }
+
+    btnCloseLiveCam.addEventListener('click', stopLiveCam);
+
+    btnCaptureSnapshot.addEventListener('click', async () => {
+      if (!webcamVideo.videoWidth) return;
+
+      snapshotCanvas.width = webcamVideo.videoWidth;
+      snapshotCanvas.height = webcamVideo.videoHeight;
+      const ctx = snapshotCanvas.getContext('2d');
+      ctx.drawImage(webcamVideo, 0, 0);
+
+      const fullBase64 = snapshotCanvas.toDataURL('image/jpeg', 0.85);
+      const base64Data = fullBase64.split(',')[1];
+
+      // Thumbnail
+      const thumbCanvas = document.createElement('canvas');
+      thumbCanvas.width = 160;
+      thumbCanvas.height = (webcamVideo.videoHeight / webcamVideo.videoWidth) * 160;
+      const thumbCtx = thumbCanvas.getContext('2d');
+      thumbCtx.drawImage(webcamVideo, 0, 0, thumbCanvas.width, thumbCanvas.height);
+      const thumbBase64 = thumbCanvas.toDataURL('image/jpeg', 0.6);
+
+      stopLiveCam();
+
+      loadingIndicator.classList.remove('hidden');
+      loadingIndicator.classList.add('flex');
+      aiStatusBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span> Đang xử lý Gemini AI...`;
+
+      try {
+        const extractedText = await processImageWithGemini(base64Data, 'image/jpeg');
+        await appendTextToRoom(extractedText, thumbBase64);
+      } catch (err) {
+        console.error("Snapshot error:", err);
+        showToast(`Lỗi trích xuất: ${err.message}`, "error");
+      } finally {
+        loadingIndicator.classList.add('hidden');
+        loadingIndicator.classList.remove('flex');
+        aiStatusBadge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-500"></span> Đã sẵn sàng`;
+      }
+    });
+
+    // Start Authentication
+    initAuth();
+  </script>
+</body>
+</html>

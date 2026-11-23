@@ -786,48 +786,32 @@
       showToast("Đã sao chép liên kết phòng!", "success");
     });
 
-    // GEMINI AI OCR INTEGRATION
-    async function processImageWithGemini(base64Data, mimeType) {
-      const apiKey = "";
-      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+    // GEMINI API - REALTIME OCR
+async function processImageWithGemini(base64Data, mimeType) {
+    const response = await fetch("/api/ocr", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            image: base64Data,
+            mimeType: mimeType || "image/jpeg"
+        })
+    });
 
-      const systemPrompt = `Hãy trích xuất chính xác 100% tất cả văn bản trong hình ảnh này. Nhận diện cả chữ in/đánh máy và chữ viết tay (đặc biệt là tiếng Việt có dấu và tiếng Anh). Giữ nguyên định dạng xuống dòng, đoạn văn, danh sách gạch đầu dòng tự nhiên nếu có. CHỈ TRẢ VỀ NỘI DUNG VĂN BẢN ĐÃ TRÍCH XUẤT, KHÔNG THÊM BẤT KỲ LỜI NÓI ĐẦU, BÌNH LUẬN HAY GIẢI THÍCH NÀO KHÁC.`;
-
-      const payload = {
-        contents: [
-          {
-            role: "user",
-            parts: [
-              { text: systemPrompt },
-              {
-                inlineData: {
-                  mimeType: mimeType || "image/jpeg",
-                  data: base64Data
-                }
-              }
-            ]
-          }
-        ]
-      };
-
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      if (!response.ok) {
-        throw new Error(`Gemini API error status: ${response.status}`);
-      }
-
-      const result = await response.json();
-      const extractedText = result.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!extractedText) {
-        throw new Error("Không tìm thấy chữ trong hình ảnh.");
-      }
-
-      return extractedText.trim();
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || "Gemini API connection failed");
     }
+
+    const result = await response.json();
+
+    if (!result.text) {
+        throw new Error("Không tìm thấy văn bản trong ảnh.");
+    }
+
+    return result.text.trim();
+}
 
     // Helper: Convert File to Base64 & Thumbnail Canvas
     function fileToBase64AndThumb(file) {
